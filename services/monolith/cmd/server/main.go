@@ -42,6 +42,7 @@ func main() {
 	userHandler := coreh.NewUserHandler(database)
 	waitlistHandler := coreh.NewWaitlistHandler(database)
 	leaderboardHandler := coreh.NewLeaderboardHandler(database)
+	feedbackHandler := coreh.NewFeedbackHandler(database)
 	aiHandler := aih.NewAIHandler(database)
 	execHandler := aih.NewExecHandler()
 	quizHandler := aih.NewQuizHandler(database)
@@ -81,6 +82,8 @@ func main() {
 		// Protected
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
+
+			r.Post("/feedback", feedbackHandler.Submit)
 
 			// User
 			r.Get("/me", userHandler.Me)

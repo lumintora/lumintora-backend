@@ -55,6 +55,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(database)
 	waitlistHandler := handlers.NewWaitlistHandler(database)
 	leaderboardHandler := handlers.NewLeaderboardHandler(database)
+	feedbackHandler := handlers.NewFeedbackHandler(database)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/waitlist", waitlistHandler.Join)
@@ -62,6 +63,8 @@ func main() {
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth)
+
+			r.Post("/feedback", feedbackHandler.Submit)
 
 			r.Get("/me", userHandler.Me)
 			r.Patch("/me", userHandler.Update)
