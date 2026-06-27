@@ -6,6 +6,7 @@ type User struct {
 	ID           string     `json:"id"`
 	Email        string     `json:"email"`
 	Name         string     `json:"name"`
+	Username     string     `json:"username"`
 	AvatarURL    *string    `json:"avatar_url,omitempty"`
 	Phone        *string    `json:"phone,omitempty"`
 	Bio          *string    `json:"bio,omitempty"`
@@ -105,6 +106,7 @@ type LeaderboardEntry struct {
 type RegisterRequest struct {
 	Email    string `json:"email"`
 	Name     string `json:"name"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 

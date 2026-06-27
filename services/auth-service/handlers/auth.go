@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
@@ -11,6 +13,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+var usernameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{3,30}$`)
 
 type AuthHandler struct {
 	db *sql.DB
@@ -26,8 +30,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Email == "" || req.Password == "" || req.Name == "" {
-		httputil.Error(w, "email, name and password are required", http.StatusBadRequest)
+	if req.Email == "" || req.Password == "" || req.Name == "" || req.Username == "" {
+		httputil.Error(w, "email, name, username and password are required", http.StatusBadRequest)
+		return
+	}
+	if !usernameRE.MatchString(req.Username) {
+		httputil.Error(w, "username must be 3–30 characters and may only contain letters, numbers, - and _", http.StatusBadRequest)
 		return
 	}
 
@@ -39,12 +47,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
 	err = h.db.QueryRowContext(r.Context(),
-		`INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3)
-		 RETURNING id, email, name, xp, streak, created_at`,
-		req.Email, req.Name, string(hash),
-	).Scan(&user.ID, &user.Email, &user.Name, &user.XP, &user.Streak, &user.CreatedAt)
+		`INSERT INTO users (email, name, username, password_hash) VALUES ($1, $2, $3, $4)
+		 RETURNING id, email, name, username, xp, streak, created_at`,
+		req.Email, req.Name, req.Username, string(hash),
+	).Scan(&user.ID, &user.Email, &user.Name, &user.Username, &user.XP, &user.Streak, &user.CreatedAt)
 	if err != nil {
-		httputil.Error(w, "email already in use", http.StatusConflict)
+		msg := err.Error()
+		if strings.Contains(msg, "users_username_unique") {
+			httputil.Error(w, "username already taken", http.StatusConflict)
+		} else {
+			httputil.Error(w, "email already in use", http.StatusConflict)
+		}
 		return
 	}
 
@@ -67,9 +80,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	var hash string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, email, name, password_hash, xp, streak, created_at FROM users WHERE email=$1`,
+		`SELECT id, email, name, COALESCE(username, ''), password_hash, xp, streak, created_at FROM users WHERE email=$1`,
 		req.Email,
-	).Scan(&user.ID, &user.Email, &user.Name, &hash, &user.XP, &user.Streak, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &user.Name, &user.Username, &hash, &user.XP, &user.Streak, &user.CreatedAt)
 	if err != nil {
 		httputil.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
