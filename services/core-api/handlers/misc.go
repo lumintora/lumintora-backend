@@ -249,7 +249,7 @@ func NewLeaderboardHandler(db *sql.DB) *LeaderboardHandler { return &Leaderboard
 
 func (h *LeaderboardHandler) Get(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.QueryContext(r.Context(),
-		`SELECT id, name, avatar_url, xp, streak, rank FROM leaderboard LIMIT 50`,
+		`SELECT id, name, username, avatar_url, xp, streak, rank FROM leaderboard LIMIT 50`,
 	)
 	if err != nil {
 		httputil.OK(w, []models.LeaderboardEntry{})
@@ -260,7 +260,7 @@ func (h *LeaderboardHandler) Get(w http.ResponseWriter, r *http.Request) {
 	entries := []models.LeaderboardEntry{}
 	for rows.Next() {
 		var e models.LeaderboardEntry
-		rows.Scan(&e.ID, &e.Name, &e.AvatarURL, &e.XP, &e.Streak, &e.Rank)
+		rows.Scan(&e.ID, &e.Name, &e.Username, &e.AvatarURL, &e.XP, &e.Streak, &e.Rank)
 		entries = append(entries, e)
 	}
 	httputil.OK(w, entries)

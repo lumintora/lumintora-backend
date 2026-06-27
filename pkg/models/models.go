@@ -97,6 +97,7 @@ type UserModuleProgress struct {
 type LeaderboardEntry struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
+	Username  string  `json:"username"`
 	AvatarURL *string `json:"avatar_url,omitempty"`
 	XP        int     `json:"xp"`
 	Streak    int     `json:"streak"`
