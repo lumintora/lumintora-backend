@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,12 +54,20 @@ func main() {
 	r.Use(chimiddleware.Compress(5))
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	allowedOrigins := map[string]bool{
+		getEnv("CORS_ORIGIN", "http://localhost:3000"): true,
+		"http://localhost:5173":                         true,
+		"https://www.lumintora.in":                     true,
+		"https://lumintora.in":                         true,
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{
-			getEnv("CORS_ORIGIN", "http://localhost:3000"),
-			"http://localhost:5173",
-			"https://www.lumintora.in",
-			"https://lumintora.in",
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			if allowedOrigins[origin] {
+				return true
+			}
+			// Allow all Cloudflare Pages preview deployments.
+			return strings.HasSuffix(origin, ".lumintora-frontend.pages.dev") ||
+				strings.HasSuffix(origin, ".pages.dev")
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
