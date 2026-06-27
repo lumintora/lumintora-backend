@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"lumintora/pkg/db"
-	"lumintora/services/auth-service/internal/handlers"
+	"lumintora/services/auth-service/handlers"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"

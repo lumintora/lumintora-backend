@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: lumintora-api
+    runtime: docker
+    dockerfilePath: services/monolith/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      # Paste your Neon connection string here after creating the DB at neon.tech
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CF_AI_URL
+        value: https://lumintora-ai.bobbynandigam-official.workers.dev
+      - key: CODE_EXEC_URL
+        value: https://wandbox.org
+      - key: CORS_ORIGIN
+        value: https://www.lumintora.in

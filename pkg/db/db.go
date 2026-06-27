@@ -14,14 +14,19 @@ import (
 )
 
 func Connect() (*sql.DB, error) {
-	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnv("DB_HOST", "localhost"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "lumintora"),
-		getEnv("DB_PASSWORD", "lumintora_secret"),
-		getEnv("DB_NAME", "lumintora"),
-	)
+	// DATABASE_URL takes priority (Neon / Render / Heroku style).
+	// Falls back to individual DB_* vars for local docker-compose.
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			getEnv("DB_HOST", "localhost"),
+			getEnv("DB_PORT", "5432"),
+			getEnv("DB_USER", "lumintora"),
+			getEnv("DB_PASSWORD", "lumintora_secret"),
+			getEnv("DB_NAME", "lumintora"),
+		)
+	}
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

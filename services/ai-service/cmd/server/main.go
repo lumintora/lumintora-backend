@@ -11,7 +11,7 @@ import (
 
 	"lumintora/pkg/db"
 	"lumintora/pkg/middleware"
-	"lumintora/services/ai-service/internal/handlers"
+	"lumintora/services/ai-service/handlers"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
