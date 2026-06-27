@@ -11,6 +11,7 @@ import (
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
 
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,12 +53,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		req.Email, req.Name, req.Username, string(hash),
 	).Scan(&user.ID, &user.Email, &user.Name, &user.Username, &user.XP, &user.Streak, &user.CreatedAt)
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "users_username_unique") {
-			httputil.Error(w, "username already taken", http.StatusConflict)
-		} else {
-			httputil.Error(w, "email already in use", http.StatusConflict)
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			if strings.Contains(pqErr.Constraint, "username") || strings.Contains(pqErr.Message, "username") {
+				httputil.Error(w, "username already taken", http.StatusConflict)
+			} else {
+				httputil.Error(w, "email already in use", http.StatusConflict)
+			}
+			return
 		}
+		httputil.Error(w, "could not create account", http.StatusInternalServerError)
 		return
 	}
 

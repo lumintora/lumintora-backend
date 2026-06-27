@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,11 +21,11 @@ type UserHandler struct{ db *sql.DB }
 
 func NewUserHandler(db *sql.DB) *UserHandler { return &UserHandler{db: db} }
 
-const userColumns = `id, email, name, avatar_url, phone, bio, location, website,
+const userColumns = `id, email, name, COALESCE(username,''), avatar_url, phone, bio, location, website,
 	twitter, github, linkedin, xp, streak, last_active_at, created_at`
 
 func scanUser(row interface{ Scan(...interface{}) error }, u *models.User) error {
-	return row.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.Phone, &u.Bio,
+	return row.Scan(&u.ID, &u.Email, &u.Name, &u.Username, &u.AvatarURL, &u.Phone, &u.Bio,
 		&u.Location, &u.Website, &u.Twitter, &u.Github, &u.Linkedin,
 		&u.XP, &u.Streak, &u.LastActiveAt, &u.CreatedAt)
 }
@@ -46,6 +47,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name      *string `json:"name"`
+		Username  *string `json:"username"`
 		Email     *string `json:"email"`
 		AvatarURL *string `json:"avatar_url"`
 		Phone     *string `json:"phone"`
@@ -65,6 +67,17 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, "name cannot be empty", http.StatusBadRequest)
 		return
 	}
+	if req.Username != nil {
+		u := strings.ToLower(strings.TrimSpace(*req.Username))
+		if u != "" {
+			matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]{3,30}$`, u)
+			if !matched {
+				httputil.Error(w, "username must be 3–30 characters and may only contain letters, numbers, - and _", http.StatusBadRequest)
+				return
+			}
+		}
+		req.Username = &u
+	}
 	if req.Email != nil {
 		e := strings.TrimSpace(strings.ToLower(*req.Email))
 		if e == "" || !strings.Contains(e, "@") {
@@ -77,26 +90,31 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	_, err := h.db.ExecContext(r.Context(),
 		`UPDATE users SET
 		   name      = COALESCE($2, name),
-		   email     = COALESCE($3, email),
-		   avatar_url= $4,
-		   phone     = $5,
-		   bio       = $6,
-		   location  = $7,
-		   website   = $8,
-		   twitter   = $9,
-		   github    = $10,
-		   linkedin  = $11,
+		   username  = COALESCE(NULLIF($3,''), username),
+		   email     = COALESCE($4, email),
+		   avatar_url= $5,
+		   phone     = $6,
+		   bio       = $7,
+		   location  = $8,
+		   website   = $9,
+		   twitter   = $10,
+		   github    = $11,
+		   linkedin  = $12,
 		   updated_at= NOW()
 		 WHERE id=$1`,
 		userID,
-		trimPtr(req.Name), req.Email,
+		trimPtr(req.Name), nilIfEmpty(req.Username), req.Email,
 		nilIfEmpty(req.AvatarURL), nilIfEmpty(req.Phone), nilIfEmpty(req.Bio),
 		nilIfEmpty(req.Location), nilIfEmpty(req.Website), nilIfEmpty(stripAt(req.Twitter)),
 		nilIfEmpty(stripAt(req.Github)), nilIfEmpty(req.Linkedin),
 	)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
-			httputil.Error(w, "that email is already in use", http.StatusConflict)
+			if strings.Contains(pqErr.Constraint, "username") || strings.Contains(pqErr.Message, "username") {
+				httputil.Error(w, "username already taken", http.StatusConflict)
+			} else {
+				httputil.Error(w, "that email is already in use", http.StatusConflict)
+			}
 			return
 		}
 		httputil.Error(w, "could not update profile", http.StatusInternalServerError)
