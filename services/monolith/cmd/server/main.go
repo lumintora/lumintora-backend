@@ -38,6 +38,7 @@ func main() {
 
 	// Handlers from all three services
 	authHandler := authh.NewAuthHandler(database)
+	googleHandler := authh.NewGoogleHandler(database)
 	pathHandler := coreh.NewPathHandler(database)
 	moduleHandler := coreh.NewModuleHandler(database)
 	userHandler := coreh.NewUserHandler(database)
@@ -87,6 +88,9 @@ func main() {
 		// Public
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
+		r.Get("/auth/google", googleHandler.Redirect)
+		r.Get("/auth/google/callback", googleHandler.Callback)
+		r.Post("/auth/google/complete", googleHandler.Complete)
 		r.Post("/waitlist", waitlistHandler.Join)
 		r.Post("/contact", contactHandler.Submit)
 		r.Post("/chat", chatHandler.Chat)
