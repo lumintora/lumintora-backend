@@ -58,10 +58,16 @@ func main() {
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	allowedOrigins := map[string]bool{
-		getEnv("CORS_ORIGIN", "http://localhost:3000"): true,
-		"http://localhost:5173":                         true,
-		"https://www.lumintora.in":                     true,
-		"https://lumintora.in":                         true,
+		"http://localhost:3000":    true,
+		"http://localhost:5173":    true,
+		"https://lumintora.in":     true,
+		"https://www.lumintora.in": true,
+	}
+	// Also allow extra origins from CORS_ORIGINS env var (comma-separated).
+	for _, o := range strings.Split(getEnv("CORS_ORIGINS", ""), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
 	}
 	r.Use(cors.Handler(cors.Options{
 		AllowOriginFunc: func(r *http.Request, origin string) bool {
