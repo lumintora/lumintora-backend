@@ -1,0 +1,8 @@
+bin/
+*.md
+Makefile
+scripts/
+.git
+.gitignore
+*.test
+*.out
