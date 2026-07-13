@@ -96,8 +96,9 @@ CREATE TABLE IF NOT EXISTS waitlist (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Leaderboard view
-CREATE OR REPLACE VIEW leaderboard AS
+-- Leaderboard view (drop-first so later migrations can extend columns idempotently)
+DROP VIEW IF EXISTS leaderboard;
+CREATE VIEW leaderboard AS
 SELECT
     u.id,
     u.name,
