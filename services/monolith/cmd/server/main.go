@@ -46,6 +46,7 @@ func main() {
 	leaderboardHandler := coreh.NewLeaderboardHandler(database)
 	feedbackHandler := coreh.NewFeedbackHandler(database)
 	contactHandler := coreh.NewContactHandler(database)
+	careersHandler := coreh.NewCareersHandler(database)
 	aiHandler := aih.NewAIHandler(database)
 	chatHandler := aih.NewChatHandler(aiHandler)
 	execHandler := aih.NewExecHandler()
@@ -100,6 +101,7 @@ func main() {
 		r.Post("/waitlist", waitlistHandler.Join)
 		r.Post("/contact", contactHandler.Submit)
 		r.Post("/chat", chatHandler.Chat)
+		r.Post("/careers/apply", careersHandler.Apply)
 		r.Get("/leaderboard", leaderboardHandler.Get)
 
 		// Protected
