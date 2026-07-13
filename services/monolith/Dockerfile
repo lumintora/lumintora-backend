@@ -12,7 +12,7 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w -extldflags=-static" \
-    -o lumintora-api ./cmd/server
+    -o lumintora-api ./services/monolith/cmd/server
 
 # ── Runtime stage ─────────────────────────────────────────────────
 FROM alpine:3.20
