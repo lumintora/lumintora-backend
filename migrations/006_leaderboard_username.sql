@@ -1,5 +1,7 @@
 -- Rebuild leaderboard view to expose username.
-CREATE OR REPLACE VIEW leaderboard AS
+-- Must DROP first: CREATE OR REPLACE cannot reorder existing view columns.
+DROP VIEW IF EXISTS leaderboard;
+CREATE VIEW leaderboard AS
 SELECT
     u.id,
     u.name,
