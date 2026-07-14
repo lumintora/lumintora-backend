@@ -47,6 +47,7 @@ func main() {
 	feedbackHandler := coreh.NewFeedbackHandler(database)
 	contactHandler := coreh.NewContactHandler(database)
 	careersHandler := coreh.NewCareersHandler(database)
+	certHandler := coreh.NewCertificateHandler(database)
 	aiHandler := aih.NewAIHandler(database)
 	chatHandler := aih.NewChatHandler(aiHandler)
 	execHandler := aih.NewExecHandler()
@@ -103,6 +104,7 @@ func main() {
 		r.Post("/chat", chatHandler.Chat)
 		r.Post("/careers/apply", careersHandler.Apply)
 		r.Get("/leaderboard", leaderboardHandler.Get)
+		r.Get("/certificates/verify", certHandler.Verify)
 
 		// Protected
 		r.Group(func(r chi.Router) {
@@ -138,6 +140,9 @@ func main() {
 			r.Post("/ai/hint", aiHandler.Hint)
 			r.Post("/ai/evaluate-code", aiHandler.EvaluateCode)
 			r.Post("/ai/generate-resume", aiHandler.GenerateResume)
+
+			// Certificates
+			r.Post("/certificates", certHandler.Issue)
 
 			// Code execution
 			r.Post("/execute", execHandler.Execute)
