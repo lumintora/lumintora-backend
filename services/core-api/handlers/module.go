@@ -29,6 +29,7 @@ func (h *ModuleHandler) List(w http.ResponseWriter, r *http.Request) {
 		        m.duration_minutes, m.xp_reward, m.difficulty, m.created_at,
 		        COALESCE(ump.status, 'locked') as status
 		 FROM modules m
+		 JOIN learning_paths lp ON lp.id=m.path_id AND lp.user_id=$2
 		 LEFT JOIN user_module_progress ump ON ump.module_id=m.id AND ump.user_id=$2
 		 WHERE m.path_id=$1 ORDER BY m.order_index`,
 		pathID, userID,
@@ -62,6 +63,7 @@ func (h *ModuleHandler) Get(w http.ResponseWriter, r *http.Request) {
 		        m.duration_minutes, m.xp_reward, m.difficulty, m.created_at,
 		        COALESCE(ump.status, 'locked') as status
 		 FROM modules m
+		 JOIN learning_paths lp ON lp.id=m.path_id AND lp.user_id=$2
 		 LEFT JOIN user_module_progress ump ON ump.module_id=m.id AND ump.user_id=$2
 		 WHERE m.id=$1`,
 		moduleID, userID,
@@ -81,7 +83,14 @@ func (h *ModuleHandler) Start(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
 
 	var pathID string
-	h.db.QueryRowContext(r.Context(), `SELECT path_id FROM modules WHERE id=$1`, moduleID).Scan(&pathID)
+	if err := h.db.QueryRowContext(r.Context(),
+		`SELECT m.path_id FROM modules m
+		 JOIN learning_paths lp ON lp.id=m.path_id
+		 WHERE m.id=$1 AND lp.user_id=$2`, moduleID, userID,
+	).Scan(&pathID); err != nil {
+		httputil.Error(w, "module not found", http.StatusNotFound)
+		return
+	}
 
 	h.db.ExecContext(r.Context(),
 		`INSERT INTO user_module_progress (user_id, module_id, path_id, status, started_at)
@@ -111,7 +120,14 @@ func (h *ModuleHandler) Feedback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var pathID string
-	h.db.QueryRowContext(r.Context(), `SELECT path_id FROM modules WHERE id=$1`, moduleID).Scan(&pathID)
+	if err := h.db.QueryRowContext(r.Context(),
+		`SELECT m.path_id FROM modules m
+		 JOIN learning_paths lp ON lp.id=m.path_id
+		 WHERE m.id=$1 AND lp.user_id=$2`, moduleID, userID,
+	).Scan(&pathID); err != nil {
+		httputil.Error(w, "module not found", http.StatusNotFound)
+		return
+	}
 	h.db.ExecContext(r.Context(),
 		`INSERT INTO user_module_progress (user_id, module_id, path_id, status, difficulty_feedback)
 		 VALUES ($1, $2, $3, 'in_progress', $4)
@@ -128,7 +144,9 @@ func (h *ModuleHandler) Complete(w http.ResponseWriter, r *http.Request) {
 	var xpReward, orderIndex int
 	var pathID string
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT xp_reward, path_id, order_index FROM modules WHERE id=$1`, moduleID,
+		`SELECT m.xp_reward, m.path_id, m.order_index FROM modules m
+		 JOIN learning_paths lp ON lp.id=m.path_id
+		 WHERE m.id=$1 AND lp.user_id=$2`, moduleID, userID,
 	).Scan(&xpReward, &pathID, &orderIndex); err != nil {
 		httputil.Error(w, "module not found", http.StatusNotFound)
 		return
@@ -180,7 +198,7 @@ func (h *ModuleHandler) Complete(w http.ResponseWriter, r *http.Request) {
 		   status=CASE WHEN (SELECT COUNT(*) FROM user_module_progress WHERE path_id=$1 AND user_id=$2 AND status='completed') >= total_modules
 		               THEN 'completed' ELSE 'active' END,
 		   updated_at=NOW()
-		 WHERE id=$1`,
+		 WHERE id=$1 AND user_id=$2`,
 		pathID, userID,
 	)
 

@@ -439,13 +439,14 @@ Be concise and encouraging.`, req.Language, req.Problem, req.Code)
 
 func (h *AIHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
+	userID := middleware.GetUserID(r)
 
 	var title, description, mtype, content, topic, level string
 	err := h.db.QueryRowContext(r.Context(),
 		`SELECT m.title, COALESCE(m.description,''), m.type, COALESCE(m.content,''),
 		        COALESCE(p.topic,''), COALESCE(p.level,'beginner')
 		 FROM modules m JOIN learning_paths p ON p.id = m.path_id
-		 WHERE m.id=$1`, moduleID,
+		 WHERE m.id=$1 AND p.user_id=$2`, moduleID, userID,
 	).Scan(&title, &description, &mtype, &content, &topic, &level)
 	if err != nil {
 		httputil.Error(w, "module not found", http.StatusNotFound)
@@ -523,12 +524,13 @@ Begin directly with the TL;DR line — no preamble and do not repeat the module 
 
 func (h *AIHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
+	userID := middleware.GetUserID(r)
 
 	var title, description, content, topic string
 	err := h.db.QueryRowContext(r.Context(),
 		`SELECT m.title, COALESCE(m.description,''), COALESCE(m.content,''), COALESCE(p.topic,'')
 		 FROM modules m JOIN learning_paths p ON p.id = m.path_id
-		 WHERE m.id=$1`, moduleID,
+		 WHERE m.id=$1 AND p.user_id=$2`, moduleID, userID,
 	).Scan(&title, &description, &content, &topic)
 	if err != nil {
 		httputil.Error(w, "module not found", http.StatusNotFound)

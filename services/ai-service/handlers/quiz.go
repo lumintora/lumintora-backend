@@ -31,6 +31,19 @@ func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce tenant isolation: the module must belong to the requesting user.
+	var owned bool
+	h.db.QueryRowContext(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM modules m
+		              JOIN learning_paths p ON p.id=m.path_id
+		              WHERE m.id=$1 AND p.user_id=$2)`,
+		moduleID, userID,
+	).Scan(&owned)
+	if !owned {
+		httputil.Error(w, "module not found", http.StatusNotFound)
+		return
+	}
+
 	rows, err := h.db.QueryContext(r.Context(),
 		`SELECT correct_option, COALESCE(explanation,'') FROM quiz_questions WHERE module_id=$1 ORDER BY order_index`,
 		moduleID,
