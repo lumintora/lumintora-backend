@@ -3,11 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
+	"lumintora/pkg/tenant"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -23,10 +25,15 @@ func NewPathHandler(db *sql.DB) *PathHandler {
 
 func (h *PathHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	rows, err := h.db.QueryContext(r.Context(),
-		`SELECT id, user_id, title, description, goal, topic, level, status,
+		fmt.Sprintf(`SELECT id, user_id, title, description, goal, topic, level, status,
 		        progress, total_modules, completed_modules, estimated_hours, tags, created_at, updated_at
-		 FROM learning_paths WHERE user_id=$1 ORDER BY created_at DESC`,
+		 FROM %[1]s.learning_paths WHERE user_id=$1 ORDER BY created_at DESC`, sc),
 		userID,
 	)
 	if err != nil {
@@ -53,12 +60,17 @@ func (h *PathHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *PathHandler) Get(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var p models.LearningPath
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, user_id, title, description, goal, topic, level, status,
+		fmt.Sprintf(`SELECT id, user_id, title, description, goal, topic, level, status,
 		        progress, total_modules, completed_modules, estimated_hours, tags, created_at, updated_at
-		 FROM learning_paths WHERE id=$1 AND user_id=$2`,
+		 FROM %[1]s.learning_paths WHERE id=$1 AND user_id=$2`, sc),
 		pathID, userID,
 	).Scan(
 		&p.ID, &p.UserID, &p.Title, &p.Description, &p.Goal, &p.Topic, &p.Level, &p.Status,
@@ -71,13 +83,13 @@ func (h *PathHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.QueryContext(r.Context(),
-		`SELECT m.id, m.path_id, m.title, m.description, m.type, m.order_index,
+		fmt.Sprintf(`SELECT m.id, m.path_id, m.title, m.description, m.type, m.order_index,
 		        m.duration_minutes, m.xp_reward, m.difficulty, m.created_at,
 		        COALESCE(m.source,'initial'), COALESCE(m.adaptive_reason,''),
 		        COALESCE(ump.status, 'locked') as status
-		 FROM modules m
-		 LEFT JOIN user_module_progress ump ON ump.module_id=m.id AND ump.user_id=$2
-		 WHERE m.path_id=$1 ORDER BY m.order_index`,
+		 FROM %[1]s.modules m
+		 LEFT JOIN %[1]s.user_module_progress ump ON ump.module_id=m.id AND ump.user_id=$2
+		 WHERE m.path_id=$1 ORDER BY m.order_index`, sc),
 		pathID, userID,
 	)
 	if err == nil {
@@ -104,13 +116,18 @@ func (h *PathHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var p models.LearningPath
 	err := h.db.QueryRowContext(r.Context(),
-		`INSERT INTO learning_paths (user_id, title, description, goal, topic, level, estimated_hours)
+		fmt.Sprintf(`INSERT INTO %[1]s.learning_paths (user_id, title, description, goal, topic, level, estimated_hours)
 		 VALUES ($1, $2, $3, $4, $5, $6, 10)
 		 RETURNING id, user_id, title, description, goal, topic, level, status, progress,
-		           total_modules, completed_modules, estimated_hours, created_at, updated_at`,
+		           total_modules, completed_modules, estimated_hours, created_at, updated_at`, sc),
 		userID, req.Goal, "AI-generated learning path", req.Goal, req.Goal, req.Level,
 	).Scan(
 		&p.ID, &p.UserID, &p.Title, &p.Description, &p.Goal, &p.Topic, &p.Level, &p.Status,
@@ -127,6 +144,11 @@ func (h *PathHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *PathHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
-	h.db.ExecContext(r.Context(), `DELETE FROM learning_paths WHERE id=$1 AND user_id=$2`, pathID, userID)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	h.db.ExecContext(r.Context(), fmt.Sprintf(`DELETE FROM %[1]s.learning_paths WHERE id=$1 AND user_id=$2`, sc), pathID, userID)
 	w.WriteHeader(http.StatusNoContent)
 }

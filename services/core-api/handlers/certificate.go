@@ -12,6 +12,7 @@ import (
 
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
+	"lumintora/pkg/tenant"
 )
 
 type CertificateHandler struct{ db *sql.DB }
@@ -45,6 +46,11 @@ func genCertID(year, month int) (string, error) {
 // POST /api/v1/certificates  — requires JWT
 func (h *CertificateHandler) Issue(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var req struct {
 		PathID string `json:"path_id"`
@@ -58,7 +64,7 @@ func (h *CertificateHandler) Issue(w http.ResponseWriter, r *http.Request) {
 	var progress int
 	var pathTitle string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT progress, title FROM learning_paths WHERE id=$1 AND user_id=$2`,
+		fmt.Sprintf(`SELECT progress, title FROM %[1]s.learning_paths WHERE id=$1 AND user_id=$2`, sc),
 		req.PathID, userID,
 	).Scan(&progress, &pathTitle)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
+	"lumintora/pkg/tenant"
 
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -62,6 +63,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		httputil.Error(w, "could not create account", http.StatusInternalServerError)
+		return
+	}
+
+	// Provision the user's private tenant schema (idempotent).
+	if _, err := h.db.ExecContext(r.Context(), tenant.CreateSchemaSQL, user.ID); err != nil {
+		httputil.Error(w, "could not initialize account workspace", http.StatusInternalServerError)
 		return
 	}
 

@@ -15,6 +15,7 @@ import (
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
+	"lumintora/pkg/tenant"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/lib/pq"
@@ -81,6 +82,11 @@ func (h *AIHandler) GeneratePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	prompt := fmt.Sprintf(`You are an adaptive learning system. Generate a structured learning path for:
 Goal: %s
@@ -149,10 +155,10 @@ Include 6-8 modules. Types can be: lesson, quiz, project, code. Mix them appropr
 
 	var path models.LearningPath
 	err = h.db.QueryRowContext(r.Context(),
-		`INSERT INTO learning_paths (user_id, title, description, goal, topic, level, estimated_hours, tags, total_modules)
+		fmt.Sprintf(`INSERT INTO %[1]s.learning_paths (user_id, title, description, goal, topic, level, estimated_hours, tags, total_modules)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, user_id, title, description, goal, topic, level, status, progress,
-		           total_modules, completed_modules, estimated_hours, created_at, updated_at`,
+		           total_modules, completed_modules, estimated_hours, created_at, updated_at`, sc),
 		userID, aiPath.Title, aiPath.Description, req.Goal, aiPath.Topic, req.Level,
 		aiPath.EstimatedHours, pq.Array(aiPath.Tags), len(aiPath.Modules),
 	).Scan(
@@ -169,9 +175,9 @@ Include 6-8 modules. Types can be: lesson, quiz, project, code. Mix them appropr
 	for _, mod := range aiPath.Modules {
 		var m models.Module
 		h.db.QueryRowContext(r.Context(),
-			`INSERT INTO modules (path_id, title, description, content, type, order_index, duration_minutes, xp_reward, difficulty)
+			fmt.Sprintf(`INSERT INTO %[1]s.modules (path_id, title, description, content, type, order_index, duration_minutes, xp_reward, difficulty)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-			 RETURNING id, path_id, title, description, type, order_index, duration_minutes, xp_reward, difficulty, created_at`,
+			 RETURNING id, path_id, title, description, type, order_index, duration_minutes, xp_reward, difficulty, created_at`, sc),
 			path.ID, mod.Title, mod.Description, "", mod.Type, mod.OrderIndex,
 			mod.DurationMinutes, mod.XPReward, mod.Difficulty,
 		).Scan(&m.ID, &m.PathID, &m.Title, &m.Description, &m.Type, &m.OrderIndex,
@@ -185,8 +191,8 @@ Include 6-8 modules. Types can be: lesson, quiz, project, code. Mix them appropr
 
 	if len(path.Modules) > 0 {
 		h.db.ExecContext(r.Context(),
-			`INSERT INTO user_module_progress (user_id, module_id, path_id, status)
-			 VALUES ($1,$2,$3,'available') ON CONFLICT DO NOTHING`,
+			fmt.Sprintf(`INSERT INTO %[1]s.user_module_progress (user_id, module_id, path_id, status)
+			 VALUES ($1,$2,$3,'available') ON CONFLICT DO NOTHING`, sc),
 			userID, path.Modules[0].ID, path.ID,
 		)
 	}
@@ -197,6 +203,11 @@ Include 6-8 modules. Types can be: lesson, quiz, project, code. Mix them appropr
 func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var req struct {
 		TriggerModuleID string `json:"trigger_module_id"`
@@ -205,8 +216,8 @@ func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 
 	var pTitle, topic, level, goal string
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT title, COALESCE(topic,''), COALESCE(level,'beginner'), COALESCE(goal,'')
-		 FROM learning_paths WHERE id=$1 AND user_id=$2`, pathID, userID,
+		fmt.Sprintf(`SELECT title, COALESCE(topic,''), COALESCE(level,'beginner'), COALESCE(goal,'')
+		 FROM %[1]s.learning_paths WHERE id=$1 AND user_id=$2`, sc), pathID, userID,
 	).Scan(&pTitle, &topic, &level, &goal); err != nil {
 		httputil.Error(w, "path not found", http.StatusNotFound)
 		return
@@ -216,16 +227,16 @@ func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 	var triggerID, triggerTitle string
 	if req.TriggerModuleID != "" {
 		h.db.QueryRowContext(r.Context(),
-			`SELECT id, order_index, title FROM modules WHERE id=$1 AND path_id=$2`,
+			fmt.Sprintf(`SELECT id, order_index, title FROM %[1]s.modules WHERE id=$1 AND path_id=$2`, sc),
 			req.TriggerModuleID, pathID,
 		).Scan(&triggerID, &triggerOrder, &triggerTitle)
 	}
 	if triggerID == "" {
 		h.db.QueryRowContext(r.Context(),
-			`SELECT m.id, m.order_index, m.title FROM modules m
-			 JOIN user_module_progress ump ON ump.module_id=m.id
+			fmt.Sprintf(`SELECT m.id, m.order_index, m.title FROM %[1]s.modules m
+			 JOIN %[1]s.user_module_progress ump ON ump.module_id=m.id
 			 WHERE ump.user_id=$1 AND m.path_id=$2 AND ump.status='completed'
-			 ORDER BY m.order_index DESC LIMIT 1`, userID, pathID,
+			 ORDER BY m.order_index DESC LIMIT 1`, sc), userID, pathID,
 		).Scan(&triggerID, &triggerOrder, &triggerTitle)
 	}
 	if triggerID == "" {
@@ -235,7 +246,7 @@ func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 
 	var dup int
 	h.db.QueryRowContext(r.Context(),
-		`SELECT COUNT(*) FROM path_adaptations WHERE path_id=$1 AND user_id=$2 AND trigger_module_id=$3`,
+		fmt.Sprintf(`SELECT COUNT(*) FROM %[1]s.path_adaptations WHERE path_id=$1 AND user_id=$2 AND trigger_module_id=$3`, sc),
 		pathID, userID, triggerID,
 	).Scan(&dup)
 	if dup > 0 {
@@ -246,13 +257,13 @@ func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 	var triggerFb sql.NullString
 	var triggerScore sql.NullInt64
 	h.db.QueryRowContext(r.Context(),
-		`SELECT difficulty_feedback, NULLIF(score,0) FROM user_module_progress
-		 WHERE user_id=$1 AND module_id=$2`, userID, triggerID,
+		fmt.Sprintf(`SELECT difficulty_feedback, NULLIF(score,0) FROM %[1]s.user_module_progress
+		 WHERE user_id=$1 AND module_id=$2`, sc), userID, triggerID,
 	).Scan(&triggerFb, &triggerScore)
 
 	var avgScore sql.NullFloat64
 	h.db.QueryRowContext(r.Context(),
-		`SELECT AVG(score) FROM user_module_progress WHERE user_id=$1 AND path_id=$2 AND score>0`,
+		fmt.Sprintf(`SELECT AVG(score) FROM %[1]s.user_module_progress WHERE user_id=$1 AND path_id=$2 AND score>0`, sc),
 		userID, pathID,
 	).Scan(&avgScore)
 
@@ -337,14 +348,14 @@ Pick a "type" of one of: lesson, quiz, project, code (prefer %q). Keep duration_
 
 	insertOrder := triggerOrder + 1
 	h.db.ExecContext(r.Context(),
-		`UPDATE modules SET order_index=order_index+1 WHERE path_id=$1 AND order_index>=$2`,
+		fmt.Sprintf(`UPDATE %[1]s.modules SET order_index=order_index+1 WHERE path_id=$1 AND order_index>=$2`, sc),
 		pathID, insertOrder,
 	)
 	var newID string
 	if err := h.db.QueryRowContext(r.Context(),
-		`INSERT INTO modules (path_id, title, description, content, type, order_index,
+		fmt.Sprintf(`INSERT INTO %[1]s.modules (path_id, title, description, content, type, order_index,
 		                      duration_minutes, xp_reward, difficulty, source, adaptive_reason)
-		 VALUES ($1,$2,$3,'',$4,$5,$6,$7,$8,'adaptive',$9) RETURNING id`,
+		 VALUES ($1,$2,$3,'',$4,$5,$6,$7,$8,'adaptive',$9) RETURNING id`, sc),
 		pathID, m.Title, m.Description, m.Type, insertOrder,
 		m.DurationMinutes, m.XPReward, m.Difficulty, m.AdaptiveReason,
 	).Scan(&newID); err != nil {
@@ -353,20 +364,20 @@ Pick a "type" of one of: lesson, quiz, project, code (prefer %q). Keep duration_
 	}
 
 	h.db.ExecContext(r.Context(),
-		`INSERT INTO user_module_progress (user_id, module_id, path_id, status)
-		 VALUES ($1,$2,$3,'available') ON CONFLICT DO NOTHING`,
+		fmt.Sprintf(`INSERT INTO %[1]s.user_module_progress (user_id, module_id, path_id, status)
+		 VALUES ($1,$2,$3,'available') ON CONFLICT DO NOTHING`, sc),
 		userID, newID, pathID,
 	)
 	h.db.ExecContext(r.Context(),
-		`UPDATE learning_paths SET total_modules=total_modules+1,
+		fmt.Sprintf(`UPDATE %[1]s.learning_paths SET total_modules=total_modules+1,
 		   progress=LEAST(100, (SELECT COUNT(*)*100/GREATEST(total_modules,1)
-		     FROM user_module_progress WHERE path_id=$1 AND user_id=$2 AND status='completed')),
-		   updated_at=NOW() WHERE id=$1`,
+		     FROM %[1]s.user_module_progress WHERE path_id=$1 AND user_id=$2 AND status='completed')),
+		   updated_at=NOW() WHERE id=$1`, sc),
 		pathID, userID,
 	)
 	h.db.ExecContext(r.Context(),
-		`INSERT INTO path_adaptations (path_id, user_id, trigger_module_id, direction, reason, created_module_id)
-		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		fmt.Sprintf(`INSERT INTO %[1]s.path_adaptations (path_id, user_id, trigger_module_id, direction, reason, created_module_id)
+		 VALUES ($1,$2,$3,$4,$5,$6)`, sc),
 		pathID, userID, triggerID, direction, m.AdaptiveReason, newID,
 	)
 
@@ -440,13 +451,18 @@ Be concise and encouraging.`, req.Language, req.Problem, req.Code)
 func (h *AIHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var title, description, mtype, content, topic, level string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT m.title, COALESCE(m.description,''), m.type, COALESCE(m.content,''),
+		fmt.Sprintf(`SELECT m.title, COALESCE(m.description,''), m.type, COALESCE(m.content,''),
 		        COALESCE(p.topic,''), COALESCE(p.level,'beginner')
-		 FROM modules m JOIN learning_paths p ON p.id = m.path_id
-		 WHERE m.id=$1 AND p.user_id=$2`, moduleID, userID,
+		 FROM %[1]s.modules m JOIN %[1]s.learning_paths p ON p.id = m.path_id
+		 WHERE m.id=$1 AND p.user_id=$2`, sc), moduleID, userID,
 	).Scan(&title, &description, &mtype, &content, &topic, &level)
 	if err != nil {
 		httputil.Error(w, "module not found", http.StatusNotFound)
@@ -458,7 +474,7 @@ func (h *AIHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	generated, err := h.generateAndStoreContent(r.Context(), moduleID, title, description, mtype, topic, level)
+	generated, err := h.generateAndStoreContent(r.Context(), sc, moduleID, title, description, mtype, topic, level)
 	if err != nil {
 		httputil.Error(w, "AI service unavailable, please try again", http.StatusServiceUnavailable)
 		return
@@ -466,7 +482,7 @@ func (h *AIHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	httputil.OK(w, map[string]string{"content": generated, "generated": "true"})
 }
 
-func (h *AIHandler) generateAndStoreContent(ctx context.Context, moduleID, title, description, mtype, topic, level string) (string, error) {
+func (h *AIHandler) generateAndStoreContent(ctx context.Context, sc, moduleID, title, description, mtype, topic, level string) (string, error) {
 	guide := "Write a clear, engaging lesson that teaches the concept from first principles, using analogies, concrete examples, and short code snippets where useful."
 	if mtype == "code" || mtype == "project" {
 		guide = "Write a hands-on lesson: briefly explain the concepts the learner needs, then walk through a clear, step-by-step build or challenge with example code in fenced code blocks."
@@ -518,32 +534,37 @@ Begin directly with the TL;DR line — no preamble and do not repeat the module 
 		return "", fmt.Errorf("AI returned empty content")
 	}
 
-	h.db.ExecContext(ctx, `UPDATE modules SET content=$1, updated_at=NOW() WHERE id=$2`, content, moduleID)
+	h.db.ExecContext(ctx, fmt.Sprintf(`UPDATE %[1]s.modules SET content=$1, updated_at=NOW() WHERE id=$2`, sc), content, moduleID)
 	return content, nil
 }
 
 func (h *AIHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var title, description, content, topic string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT m.title, COALESCE(m.description,''), COALESCE(m.content,''), COALESCE(p.topic,'')
-		 FROM modules m JOIN learning_paths p ON p.id = m.path_id
-		 WHERE m.id=$1 AND p.user_id=$2`, moduleID, userID,
+		fmt.Sprintf(`SELECT m.title, COALESCE(m.description,''), COALESCE(m.content,''), COALESCE(p.topic,'')
+		 FROM %[1]s.modules m JOIN %[1]s.learning_paths p ON p.id = m.path_id
+		 WHERE m.id=$1 AND p.user_id=$2`, sc), moduleID, userID,
 	).Scan(&title, &description, &content, &topic)
 	if err != nil {
 		httputil.Error(w, "module not found", http.StatusNotFound)
 		return
 	}
 
-	questions, err := h.loadQuiz(r.Context(), moduleID)
+	questions, err := h.loadQuiz(r.Context(), sc, moduleID)
 	if err != nil {
 		httputil.Error(w, "could not load quiz", http.StatusInternalServerError)
 		return
 	}
 	if len(questions) == 0 {
-		questions, err = h.generateAndStoreQuiz(r.Context(), moduleID, title, description, content, topic)
+		questions, err = h.generateAndStoreQuiz(r.Context(), sc, moduleID, title, description, content, topic)
 		if err != nil {
 			httputil.Error(w, "AI service unavailable, please try again", http.StatusServiceUnavailable)
 			return
@@ -563,10 +584,10 @@ func (h *AIHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 	httputil.OK(w, out)
 }
 
-func (h *AIHandler) loadQuiz(ctx context.Context, moduleID string) ([]models.QuizQuestion, error) {
+func (h *AIHandler) loadQuiz(ctx context.Context, sc, moduleID string) ([]models.QuizQuestion, error) {
 	rows, err := h.db.QueryContext(ctx,
-		`SELECT id, module_id, question, options, correct_option, COALESCE(explanation,''), order_index
-		 FROM quiz_questions WHERE module_id=$1 ORDER BY order_index`, moduleID)
+		fmt.Sprintf(`SELECT id, module_id, question, options, correct_option, COALESCE(explanation,''), order_index
+		 FROM %[1]s.quiz_questions WHERE module_id=$1 ORDER BY order_index`, sc), moduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +606,7 @@ func (h *AIHandler) loadQuiz(ctx context.Context, moduleID string) ([]models.Qui
 	return qs, nil
 }
 
-func (h *AIHandler) generateAndStoreQuiz(ctx context.Context, moduleID, title, description, content, topic string) ([]models.QuizQuestion, error) {
+func (h *AIHandler) generateAndStoreQuiz(ctx context.Context, sc, moduleID, title, description, content, topic string) ([]models.QuizQuestion, error) {
 	prompt := fmt.Sprintf(`Create a multiple-choice quiz that tests understanding of this lesson.
 
 Topic: %s
@@ -631,8 +652,8 @@ explanation of why it is correct. Respond ONLY with valid JSON.`,
 		optsJSON, _ := json.Marshal(q.Options)
 		var id string
 		err := h.db.QueryRowContext(ctx,
-			`INSERT INTO quiz_questions (module_id, question, options, correct_option, explanation, order_index)
-			 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+			fmt.Sprintf(`INSERT INTO %[1]s.quiz_questions (module_id, question, options, correct_option, explanation, order_index)
+			 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, sc),
 			moduleID, q.Question, string(optsJSON), q.CorrectOption, q.Explanation, i+1,
 		).Scan(&id)
 		if err != nil {

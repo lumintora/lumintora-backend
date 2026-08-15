@@ -12,6 +12,7 @@ import (
 
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
+	"lumintora/pkg/tenant"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -140,6 +141,12 @@ func (h *GoogleHandler) Complete(w http.ResponseWriter, r *http.Request) {
 			msg = "an account with this email already exists — sign in instead"
 		}
 		httputil.Error(w, msg, http.StatusConflict)
+		return
+	}
+
+	// Provision the user's private tenant schema (idempotent).
+	if _, err := h.db.ExecContext(r.Context(), tenant.CreateSchemaSQL, userID); err != nil {
+		httputil.Error(w, "could not initialize account workspace", http.StatusInternalServerError)
 		return
 	}
 

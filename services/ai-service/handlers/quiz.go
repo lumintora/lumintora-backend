@@ -3,11 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
+	"lumintora/pkg/tenant"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -24,6 +26,11 @@ func NewQuizHandler(db *sql.DB) *QuizHandler {
 func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var req models.QuizSubmitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -34,9 +41,9 @@ func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	// Enforce tenant isolation: the module must belong to the requesting user.
 	var owned bool
 	h.db.QueryRowContext(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM modules m
-		              JOIN learning_paths p ON p.id=m.path_id
-		              WHERE m.id=$1 AND p.user_id=$2)`,
+		fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %[1]s.modules m
+		              JOIN %[1]s.learning_paths p ON p.id=m.path_id
+		              WHERE m.id=$1 AND p.user_id=$2)`, sc),
 		moduleID, userID,
 	).Scan(&owned)
 	if !owned {
@@ -45,7 +52,7 @@ func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.QueryContext(r.Context(),
-		`SELECT correct_option, COALESCE(explanation,'') FROM quiz_questions WHERE module_id=$1 ORDER BY order_index`,
+		fmt.Sprintf(`SELECT correct_option, COALESCE(explanation,'') FROM %[1]s.quiz_questions WHERE module_id=$1 ORDER BY order_index`, sc),
 		moduleID,
 	)
 	if err != nil {
@@ -80,11 +87,11 @@ func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	passed := percent >= 70
 
 	h.db.ExecContext(r.Context(),
-		`INSERT INTO user_module_progress (user_id, module_id, path_id, status, score, attempts)
-		 SELECT $1, $2, m.path_id, 'in_progress', $3, 1 FROM modules m WHERE m.id=$2
+		fmt.Sprintf(`INSERT INTO %[1]s.user_module_progress (user_id, module_id, path_id, status, score, attempts)
+		 SELECT $1, $2, m.path_id, 'in_progress', $3, 1 FROM %[1]s.modules m WHERE m.id=$2
 		 ON CONFLICT (user_id, module_id) DO UPDATE SET
 		   score=GREATEST(user_module_progress.score, EXCLUDED.score),
-		   attempts=user_module_progress.attempts+1`,
+		   attempts=user_module_progress.attempts+1`, sc),
 		userID, moduleID, percent,
 	)
 

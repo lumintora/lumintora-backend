@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"lumintora/pkg/httputil"
 	"lumintora/pkg/middleware"
 	"lumintora/pkg/models"
+	"lumintora/pkg/tenant"
 
 	"github.com/lib/pq"
 )
@@ -132,12 +134,17 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Activity(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
+	sc, ok := tenant.Schema(userID)
+	if !ok {
+		httputil.OK(w, models.ActivitySummary{Days: []models.ActivityDay{}})
+		return
+	}
 
 	rows, err := h.db.QueryContext(r.Context(),
-		`SELECT created_at::date AS day, COUNT(*) AS events, COALESCE(SUM(amount),0) AS xp
-		 FROM xp_transactions
+		fmt.Sprintf(`SELECT created_at::date AS day, COUNT(*) AS events, COALESCE(SUM(amount),0) AS xp
+		 FROM %[1]s.xp_transactions
 		 WHERE user_id=$1 AND created_at >= (NOW() - INTERVAL '371 days')::date
-		 GROUP BY day ORDER BY day`, userID)
+		 GROUP BY day ORDER BY day`, sc), userID)
 	if err != nil {
 		httputil.OK(w, models.ActivitySummary{Days: []models.ActivityDay{}})
 		return
