@@ -46,7 +46,7 @@ func genCertID(year, month int) (string, error) {
 // POST /api/v1/certificates  — requires JWT
 func (h *CertificateHandler) Issue(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

@@ -26,7 +26,7 @@ func NewQuizHandler(db *sql.DB) *QuizHandler {
 func (h *QuizHandler) SubmitQuiz(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

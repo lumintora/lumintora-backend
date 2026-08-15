@@ -25,7 +25,7 @@ func NewPathHandler(db *sql.DB) *PathHandler {
 
 func (h *PathHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -60,7 +60,7 @@ func (h *PathHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *PathHandler) Get(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -116,7 +116,7 @@ func (h *PathHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -144,7 +144,7 @@ func (h *PathHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *PathHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

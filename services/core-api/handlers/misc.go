@@ -134,7 +134,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Activity(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.OK(w, models.ActivitySummary{Days: []models.ActivityDay{}})
 		return

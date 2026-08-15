@@ -25,7 +25,7 @@ func NewModuleHandler(db *sql.DB) *ModuleHandler {
 func (h *ModuleHandler) List(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -63,7 +63,7 @@ func (h *ModuleHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *ModuleHandler) Get(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -93,7 +93,7 @@ func (h *ModuleHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *ModuleHandler) Start(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -121,7 +121,7 @@ func (h *ModuleHandler) Start(w http.ResponseWriter, r *http.Request) {
 func (h *ModuleHandler) Feedback(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -162,7 +162,7 @@ func (h *ModuleHandler) Feedback(w http.ResponseWriter, r *http.Request) {
 func (h *ModuleHandler) Complete(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

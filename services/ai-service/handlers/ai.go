@@ -82,7 +82,7 @@ func (h *AIHandler) GeneratePath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -203,7 +203,7 @@ Include 6-8 modules. Types can be: lesson, quiz, project, code. Mix them appropr
 func (h *AIHandler) Adapt(w http.ResponseWriter, r *http.Request) {
 	pathID := chi.URLParam(r, "pathID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -451,7 +451,7 @@ Be concise and encouraging.`, req.Language, req.Problem, req.Code)
 func (h *AIHandler) GetContent(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -541,7 +541,7 @@ Begin directly with the TL;DR line — no preamble and do not repeat the module 
 func (h *AIHandler) GetQuiz(w http.ResponseWriter, r *http.Request) {
 	moduleID := chi.URLParam(r, "moduleID")
 	userID := middleware.GetUserID(r)
-	sc, ok := tenant.Schema(userID)
+	sc, ok := tenant.Schema(r.Context(), h.db, userID)
 	if !ok {
 		httputil.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
