@@ -9,7 +9,7 @@ import (
 	"lumintora/pkg/httputil"
 )
 
-var validRoles = map[string]bool{"gtm": true, "qa": true}
+var validRoles = map[string]bool{"gtm": true, "qa": true, "ai-fellowship": true}
 
 type CareersHandler struct{ db *sql.DB }
 
@@ -41,7 +41,7 @@ func (h *CareersHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validRoles[req.Role] {
-		httputil.Error(w, "invalid role — must be gtm or qa", http.StatusBadRequest)
+		httputil.Error(w, "invalid role — must be gtm, qa or ai-fellowship", http.StatusBadRequest)
 		return
 	}
 
