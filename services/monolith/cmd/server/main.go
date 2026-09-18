@@ -52,6 +52,7 @@ func main() {
 	chatHandler := aih.NewChatHandler(aiHandler)
 	execHandler := aih.NewExecHandler()
 	quizHandler := aih.NewQuizHandler(database)
+	forgeHandler := aih.NewForgeHandler(database, aiHandler)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
@@ -96,6 +97,8 @@ func main() {
 		// Public
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
+		r.Post("/auth/forgot-password", authHandler.ForgotPassword)
+		r.Post("/auth/reset-password", authHandler.ResetPassword)
 		r.Get("/auth/google", googleHandler.Redirect)
 		r.Get("/auth/google/callback", googleHandler.Callback)
 		r.Post("/auth/google/complete", googleHandler.Complete)
@@ -139,6 +142,7 @@ func main() {
 			r.Post("/ai/explain", aiHandler.Explain)
 			r.Post("/ai/hint", aiHandler.Hint)
 			r.Post("/ai/evaluate-code", aiHandler.EvaluateCode)
+			r.Post("/ai/debug", aiHandler.DebugCode)
 			r.Post("/ai/generate-resume", aiHandler.GenerateResume)
 
 			// Certificates
@@ -146,6 +150,19 @@ func main() {
 
 			// Code execution
 			r.Post("/execute", execHandler.Execute)
+
+			// Forge — adaptive technical refresh
+			r.Get("/forge/skills", forgeHandler.Skills)
+			r.Get("/forge/skills/{topicKey}", forgeHandler.SkillDetail)
+			r.Post("/forge/refresh/start", forgeHandler.StartRefresh)
+			r.Post("/forge/refresh/{sessionID}/diagnostic", forgeHandler.SubmitDiagnostic)
+			r.Post("/forge/refresh/{sessionID}/next", forgeHandler.NextActivity)
+			r.Post("/forge/refresh/{sessionID}/complete", forgeHandler.CompleteRefresh)
+			r.Post("/forge/activities/{activityID}/answer", forgeHandler.AnswerActivity)
+			r.Post("/forge/tutor", forgeHandler.Tutor)
+			r.Post("/forge/interview/start", forgeHandler.InterviewStart)
+			r.Post("/forge/interview/{interviewID}/reply", forgeHandler.InterviewReply)
+			r.Post("/forge/interview/{interviewID}/finish", forgeHandler.InterviewFinish)
 		})
 	})
 

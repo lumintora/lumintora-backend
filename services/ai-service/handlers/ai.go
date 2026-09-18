@@ -871,3 +871,88 @@ var resumeJSONSchema = map[string]interface{}{
 	},
 	"required": []string{"summary", "experiences"},
 }
+
+// DebugCode runs an AI code-review + debugging pass: it finds real bugs, edge
+// cases, performance issues and risky patterns, and proposes a corrected
+// version — the "AI assistant that debugs and fixes flaws" in the editor.
+func (h *AIHandler) DebugCode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code     string `json:"code"`
+		Language string `json:"language"`
+		Problem  string `json:"problem"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	if strings.TrimSpace(req.Code) == "" {
+		httputil.Error(w, "code is required", http.StatusBadRequest)
+		return
+	}
+	if req.Language == "" {
+		req.Language = "code"
+	}
+	ctx := ""
+	if strings.TrimSpace(req.Problem) != "" {
+		ctx = " while solving: " + truncate(req.Problem, 600)
+	}
+
+	prompt := fmt.Sprintf(`You are a senior engineer doing a code review and debugging pass on the following %s code%s.
+
+Find REAL problems only — do not invent issues. Look for: bugs and logic errors, unhandled edge cases (empty input, nulls, overflow, off-by-one), incorrect or wasteful time/space complexity, concurrency hazards, and risky or unclear patterns. If the code is correct and clean, say so and return an empty issues array.
+
+Code:
+%s
+
+Respond ONLY as JSON:
+{"summary":"1-2 sentence overall assessment","issues":[{"severity":"bug|warning|perf|style","title":"short title","detail":"what is wrong and why it matters","fix":"concretely how to fix it"}],"fixed_code":"the full corrected code, or an empty string if no change is needed"}`,
+		req.Language, ctx, truncate(req.Code, 6000))
+
+	text, err := h.callCFAI("/ai/generate", map[string]interface{}{
+		"prompt":      prompt,
+		"max_tokens":  1600,
+		"json_schema": debugCodeSchema,
+	})
+	if err != nil {
+		httputil.Error(w, "AI is unavailable right now, please try again", http.StatusServiceUnavailable)
+		return
+	}
+
+	var out struct {
+		Summary string `json:"summary"`
+		Issues  []struct {
+			Severity string `json:"severity"`
+			Title    string `json:"title"`
+			Detail   string `json:"detail"`
+			Fix      string `json:"fix"`
+		} `json:"issues"`
+		FixedCode string `json:"fixed_code"`
+	}
+	if err := json.Unmarshal([]byte(extractJSON(text)), &out); err != nil || strings.TrimSpace(out.Summary) == "" {
+		// Fallback: surface the raw explanation so the assistant still helps.
+		httputil.OK(w, map[string]interface{}{
+			"summary": strings.TrimSpace(text), "issues": []interface{}{}, "fixed_code": "",
+		})
+		return
+	}
+	httputil.OK(w, out)
+}
+
+var debugCodeSchema = map[string]interface{}{
+	"type": "object",
+	"properties": map[string]interface{}{
+		"summary": map[string]interface{}{"type": "string"},
+		"issues": map[string]interface{}{
+			"type": "array",
+			"items": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"severity": map[string]interface{}{"type": "string", "enum": []string{"bug", "warning", "perf", "style"}},
+					"title":    map[string]interface{}{"type": "string"},
+					"detail":   map[string]interface{}{"type": "string"},
+					"fix":      map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"severity", "title", "detail"},
+			},
+		},
+		"fixed_code": map[string]interface{}{"type": "string"},
+	},
+	"required": []string{"summary", "issues"},
+}

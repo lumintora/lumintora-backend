@@ -38,6 +38,15 @@ func NewGoogleHandler(db *sql.DB) *GoogleHandler {
 // Redirect sends the user to Google's consent screen.
 func (h *GoogleHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	if h.clientID == "" {
+		// Dev/demo fallback: real Google OAuth needs a registered app (client id
+		// + secret + authorized redirect URIs) — it can't run on dummy values.
+		// When ALLOW_DEV_GOOGLE=true and no client id is set, sign the user in as
+		// a seeded demo Google account so the button works locally. This flag
+		// MUST stay off in production.
+		if strings.EqualFold(os.Getenv("ALLOW_DEV_GOOGLE"), "true") {
+			h.devGoogleLogin(w, r)
+			return
+		}
 		http.Error(w, "Google OAuth not configured", http.StatusServiceUnavailable)
 		return
 	}
@@ -50,6 +59,55 @@ func (h *GoogleHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 		"prompt":        {"select_account"},
 	}
 	http.Redirect(w, r, "https://accounts.google.com/o/oauth2/v2/auth?"+params.Encode(), http.StatusTemporaryRedirect)
+}
+
+// devGoogleLogin signs in (or creates) a fixed demo Google account and redirects
+// to the frontend with a JWT — used only when ALLOW_DEV_GOOGLE=true and no real
+// Google client id is configured. Lets the "Continue with Google" button work
+// end-to-end in local demos without a registered OAuth app.
+func (h *GoogleHandler) devGoogleLogin(w http.ResponseWriter, r *http.Request) {
+	const (
+		demoEmail = "demo.google@lumintora.dev"
+		demoName  = "Bobby (Google Demo)"
+		demoGID   = "dev-google-000000001"
+	)
+
+	var userID, email string
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT id, email FROM users WHERE email=$1 OR google_id=$2 LIMIT 1`, demoEmail, demoGID).Scan(&userID, &email)
+	if err == sql.ErrNoRows {
+		// Pick a free username (demo account may be recreated on a wiped DB).
+		username := "google_demo"
+		for i := 0; i < 5; i++ {
+			e := h.db.QueryRowContext(r.Context(),
+				`INSERT INTO users (name, email, username, google_id, picture_url, password_hash)
+				 VALUES ($1,$2,$3,$4,'','') RETURNING id`,
+				demoName, demoEmail, username, demoGID).Scan(&userID)
+			if e == nil {
+				break
+			}
+			username = fmt.Sprintf("google_demo_%d", time.Now().UnixNano()%100000)
+		}
+		if userID == "" {
+			http.Redirect(w, r, h.frontendURL+"/login?error=dev_google_failed", http.StatusTemporaryRedirect)
+			return
+		}
+		email = demoEmail
+		if _, err := h.db.ExecContext(r.Context(), tenant.CreateSchemaSQL, userID); err != nil {
+			http.Redirect(w, r, h.frontendURL+"/login?error=dev_google_failed", http.StatusTemporaryRedirect)
+			return
+		}
+	} else if err != nil {
+		http.Redirect(w, r, h.frontendURL+"/login?error=db_error", http.StatusTemporaryRedirect)
+		return
+	}
+
+	token, err := middleware.GenerateToken(userID, email)
+	if err != nil {
+		http.Redirect(w, r, h.frontendURL+"/login?error=token_error", http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, h.frontendURL+"/auth/success?token="+url.QueryEscape(token), http.StatusTemporaryRedirect)
 }
 
 // Callback handles the OAuth code exchange from Google.
@@ -149,6 +207,9 @@ func (h *GoogleHandler) Complete(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, "could not initialize account workspace", http.StatusInternalServerError)
 		return
 	}
+
+	// Welcome email (best-effort — never blocks account creation).
+	go sendWelcomeEmail(gUser.Email, gUser.Name)
 
 	token, err := middleware.GenerateToken(userID, gUser.Email)
 	if err != nil {
