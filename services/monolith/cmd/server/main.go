@@ -48,6 +48,9 @@ func main() {
 	contactHandler := coreh.NewContactHandler(database)
 	careersHandler := coreh.NewCareersHandler(database)
 	certHandler := coreh.NewCertificateHandler(database)
+	sdHandler := coreh.NewSystemDesignHandler(database)
+	hiringHandler := coreh.NewHiringHandler(database)
+	debugHandler := coreh.NewDebugHandler(database)
 	aiHandler := aih.NewAIHandler(database)
 	chatHandler := aih.NewChatHandler(aiHandler)
 	execHandler := aih.NewExecHandler()
@@ -108,6 +111,19 @@ func main() {
 		r.Post("/careers/apply", careersHandler.Apply)
 		r.Get("/leaderboard", leaderboardHandler.Get)
 		r.Get("/certificates/verify", certHandler.Verify)
+
+		// System Design Lab (public — the page works signed-in or out)
+		r.Get("/system-design/challenge", sdHandler.Challenge)
+		r.Post("/system-design/evaluate", sdHandler.Evaluate)
+
+		// Hiring Loop (public)
+		r.Get("/hiring/loop", hiringHandler.Loop)
+		r.Post("/hiring/score", hiringHandler.Score)
+		r.Post("/hiring/decide", hiringHandler.Decide)
+
+		// AI Debugging (public)
+		r.Get("/debug/challenge", debugHandler.Challenge)
+		r.Post("/debug/hint", debugHandler.Hint)
 
 		// Protected
 		r.Group(func(r chi.Router) {
